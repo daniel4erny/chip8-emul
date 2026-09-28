@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 )
 
 type CPU struct {
@@ -9,11 +10,11 @@ type CPU struct {
 	regs [16]byte
 	i_reg uint16
 	pc_reg uint16
-	sp_reg [1]byte
+	sp_reg uint8
 	stack [16]uint16
 }
 
-func (CPU) new() *CPU {
+func newCPU() *CPU {
 	return &CPU{
 		pc_reg: 0x200,		
 	}
@@ -21,6 +22,7 @@ func (CPU) new() *CPU {
 
 func (c *CPU) exec() {
 	op := c.ram[c.pc_reg: c.pc_reg+2]
+	whole_op := uint16(op[0])<<8 | uint16(op[1])
 	first_hex := op[0] >> 4
 	const vf = 15
 
@@ -29,8 +31,16 @@ func (c *CPU) exec() {
 		high_addr := op[0] << 4
 		low_addr := op[1]
 		addr := (uint16(high_addr) << 8) | uint16(low_addr)
-		c.pc_reg += addr
-	// case 0x2:
+		c.pc_reg = addr
+	case 0x2:
+		high_addr := op[0] << 4
+		low_addr := op[1]
+		addr := (uint16(high_addr) << 8) | uint16(low_addr)
+		if c.sp_reg >= 15 {
+			log.Fatal("SUBROUTINES EXCEEDED MAXIMUM DEPTH (16)")
+		} 
+		c.stack[c.sp_reg] = addr
+		c.sp_reg++
 	case 0x3:
 		reg := int(op[0] & 0x0F)
 		val := op[1]
@@ -92,6 +102,14 @@ func (c *CPU) exec() {
 			c.regs[reg_x] = c.regs[reg_x] - c.regs[reg_y]
 			c.pc_reg += 2
 		}
+	default:
+		if whole_op == 0x00ee {  // return from subroutine call 
+			if c.sp_reg == 0 {
+				log.Fatal("SUBROUTINES EXCEEDED MINIMUM DEPTH (0)")
+			} 
+			c.pc_reg = c.stack[c.sp_reg -1]
+			c.sp_reg--
+		}
 	} 
 }
 
@@ -116,3 +134,13 @@ func main() {
 // 3rxx 	skeq vr,xx 	skip if register r = constant 	
 // 4rxx 	skne vr,xx 	skip if register r <> constant 	
 // 5ry0 	skeq vr,vy 	skip f register r = register y 
+// 00EE 	rts 	return from subroutine call 
+
+// THIRD TO-DO
+// 8r06 	shr vr 	shift register vy right, bit 0 goes into register vf 	
+// 8ry7 	rsb vr,vy 	subtract register vr from register vy, result in vr 	vf set to 1 if borrows
+// 8r0e 	shl vr 	shift register vr left,bit 7 goes into register vf 	
+// 9ry0 	skne rx,ry 	skip if register rx <> register ry 	
+// axxx 	mvi xxx 	Load index register with constant xxx 	
+// bxxx 	jmi xxx 	Jump to address xxx+register v0 	
+// crxx 	rand vr,xxx    	vr = random number less than or equal to xxx 	
