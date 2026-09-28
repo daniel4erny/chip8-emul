@@ -13,7 +13,7 @@ type CPU struct {
 	pc_reg uint16
 	sp_reg uint8
 	stack [16]uint16
-	screen [32][64]bool
+	screen [64 * 32]byte //I will hate myself for this
 
 	shift_quirk bool
 }
