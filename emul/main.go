@@ -12,6 +12,8 @@ type CPU struct {
 	pc_reg uint16
 	sp_reg uint8
 	stack [16]uint16
+
+	shift_quirk bool
 }
 
 func newCPU() *CPU {
@@ -70,7 +72,6 @@ func (c *CPU) exec() {
 		last_hex := op[1] & 0x0F
 		reg_y := op[1] >> 4
 		reg_x := op[0] & 0x0F
-		c.pc_reg += 2
 		switch last_hex {
 		case 0x0: // mov reg_x, reg_y
 			c.regs[reg_x] = c.regs[reg_y]
@@ -101,7 +102,43 @@ func (c *CPU) exec() {
 			}
 			c.regs[reg_x] = c.regs[reg_x] - c.regs[reg_y]
 			c.pc_reg += 2
+		case 0x6: // note pro mě, je to dělení dvěma a pak je v vf jestli to bylo lichý (1 jestli jo a 0 jestli ne)
+			if c.shift_quirk {
+			    val := c.regs[reg_y]
+			    c.regs[vf] = val & 1
+			    c.regs[reg_x] = val >> 1
+			} else {
+			    c.regs[vf] = c.regs[reg_x] & 1
+			    c.regs[reg_x] = c.regs[reg_x] >> 1
+			}					
+			c.pc_reg += 1
+		case 0x7:
+			if c.regs[reg_x] >= c.regs[reg_y] {
+				c.regs[vf] = 1
+			} else {
+				c.regs[vf] = 0
+			}
+			c.regs[reg_x] = c.regs[reg_y] - c.regs[reg_x]
+			c.pc_reg += 2
+		case 0xe:
+			if c.shift_quirk {
+				val := c.regs[reg_y]
+				c.regs[vf] = (val >> 7) & 1
+				c.regs[reg_x] = val << 1
+			} else {
+				c.regs[vf] = (c.regs[reg_x] >> 7) & 1
+				c.regs[reg_x] = c.regs[reg_x] << 1
+			}
+			c.pc_reg += 2
 		}
+	case 0x9:
+		reg_y := op[1] >> 4
+		reg_x := op[0] & 0x0F
+		if c.regs[reg_y] > c.regs[reg_x] || c.regs[reg_y] < c.regs[reg_x] {
+			c.pc_reg += 2
+		} 
+		c.pc_reg += 2
+
 	default:
 		if whole_op == 0x00ee {  // return from subroutine call 
 			if c.sp_reg == 0 {
