@@ -54,7 +54,20 @@ func (c *CPU) draw(op [2]byte) {
 	// ten vzdycky vezme pointer na byte a pro kazdy bit vyxoruje pixel na kterem stojime
 	// vf je 1 pokud jsme xorem vypli nejaky bit (1^1) 
 	// drys		 sprite rx,ry,s 	 Draw sprite at screen location rx,ry height s WIDTH 8
+	reg_y := op[0] & 0x0F
+	reg_x := op[1] >> 4
 
+	pos_y := c.regs[reg_y]
+	pos_x := c.regs[reg_x]
+	height := int(op[1] & 0x0F)
+	sprite_ptr := c.i_reg
+	masky := []byte{0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01}
+
+	for y := 0; y < height; y++ {
+		for x, mask := range masky {
+			
+		}
+	}
 }
 
 func (c *CPU) exec() {
