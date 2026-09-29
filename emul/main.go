@@ -54,19 +54,40 @@ func (c *CPU) draw(op [2]byte) {
 	// ten vzdycky vezme pointer na byte a pro kazdy bit vyxoruje pixel na kterem stojime
 	// vf je 1 pokud jsme xorem vypli nejaky bit (1^1) 
 	// drys		 sprite rx,ry,s 	 Draw sprite at screen location rx,ry height s WIDTH 8
-	reg_y := op[0] & 0x0F
-	reg_x := op[1] >> 4
+	reg_x := op[0] & 0x0F
+	reg_y := op[1] >> 4
 
 	pos_y := c.regs[reg_y]
 	pos_x := c.regs[reg_x]
 	height := int(op[1] & 0x0F)
 	sprite_ptr := c.i_reg
 	masky := []byte{0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01}
+	c.regs[15] = 0
 
 	for y := 0; y < height; y++ {
 		for x, mask := range masky {
-			
+			val := c.ram[sprite_ptr + uint16(y)] & mask
+			curr_y := (int(pos_y) + y) % 32 * 64
+			curr_x := (int(pos_x) + x) % 64
+			curr_pixel := &c.screen[curr_y + curr_x]
+			if byte_to_bool(val) && *curr_pixel == 255 {
+				c.regs[15] = 1
+			}
+
+			if byte_to_bool(val) != byte_to_bool(*curr_pixel) {
+				*curr_pixel = byte(255)
+			} else {
+				*curr_pixel = byte(0)
+			}
 		}
+	}
+}
+
+func byte_to_bool(b byte) bool {
+	if b == 0x0 {
+		return false
+	} else {
+		return true
 	}
 }
 
@@ -222,7 +243,12 @@ func (c *CPU) exec() {
 			} 
 			c.pc_reg = c.stack[c.sp_reg -1]
 			c.sp_reg--
-		}
+		} else if whole_op == 0x00e0 {
+			for x, _ := range c.screen {
+				c.screen[x] = 0x0
+			}
+			c.pc_reg += 2
+		} 
 	} 
 }
 
@@ -261,4 +287,20 @@ func main() {
 // FOURTH-TODO
 // 1 fr29 	font vr 	point I to the sprite for hexadecimal character in vr 	Sprite is 5 bytes high
 // 1 fr1e 	adi vr 	add register vr to the index register
-// drys 	sprite rx,ry,s 	Draw sprite at screen location rx,ry height s 	Sprites stored in memory at location in index register, maximum 8 bits wide. Wraps around the screen. If when drawn, clears a pixel, vf is set to 1 otherwise it is zero. All drawing is xor drawing (e.g. it toggles the screen pixels
+// 1 drys 	sprite rx,ry,s 	Draw sprite at screen location rx,ry height s 	Sprites stored in memory at location in index register, maximum 8 bits wide. Wraps around the screen. If when drawn, clears a pixel, vf is set to 1 otherwise it is zero. All drawing is xor drawing (e.g. it toggles the screen pixels
+// 1 00E0 	cls 	Clear the screen
+
+// FIFTH TO-DO
+// fr55 	str v0-vr 	store registers v0-vr at location I onwards 	I is incremented to point to the next location on. e.g. I = I + r + 1
+// fr65 	ldr v0-vr 	load registers v0-vr from location I onwards 	as above. 
+// fr33 	bcd vr 	store the bcd representation of register vr at location I,I+1,I+2 	Doesn't change I   (note pro me, je to decimal reprezentace hodnoty v regu)
+
+// SIXTH TO-DO
+// fr07 	gdelay vr 	get delay timer into vr 	
+// fr15 	sdelay vr 	set the delay timer to vr 	
+// fr18 	ssound vr 	set the sound timer to vr 
+
+// SEVENTH TO-DO
+// ek9e 	skpr k 	skip if key (register rk) pressed 	The key is a key number, see the chip-8 documentation
+// eka1 	skup k 	skip if key (register rk) not pressed 	
+// fr0a 	key vr 	wait for for keypress,put key in register vr 	
