@@ -1,9 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"math/rand/v2"
+	"sync"
+	"time"
+	"syscall/js"
 )
 
 type CPU struct {
@@ -13,9 +15,29 @@ type CPU struct {
 	pc_reg uint16
 	sp_reg uint8
 	stack [16]uint16
-	screen [64 * 32]byte //I will hate myself for this
+	screen [64 * 32]byte //I will hate myself for this, note: I did
+	
+	delay_timer byte
+	sound_timer byte
+	lock sync.Mutex
 
 	shift_quirk bool
+}
+
+func (c *CPU) start_ticking() {
+	ticker := time.NewTicker(time.Second / 60)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		c.lock.Lock()
+		if c.delay_timer > 0 {
+			c.delay_timer--
+		}
+		if c.sound_timer > 0 {
+			c.sound_timer--
+		}
+		c.lock.Unlock()
+	}
 }
 
 func newCPU() *CPU {
@@ -235,7 +257,49 @@ func (c *CPU) exec() {
 			reg := op[0] & 0x0F
 			c.i_reg = uint16(c.regs[reg]) * 5 // one char is 5 byte, therefore we multiply the value by five
 			c.pc_reg += 2
-		}
+		case 0x55:
+			max_reg := int(op[0] & 0x0F)
+			for reg := 0; reg <= max_reg; reg++ {
+				c.ram[c.i_reg] = c.regs[reg]
+				c.i_reg++
+			}
+			c.pc_reg += 2
+		case 0x65:
+			max_reg := int(op[0] & 0x0F)
+			for reg := 0; reg <= max_reg; reg++ {
+				c.regs[reg] = c.ram[c.i_reg]
+				c.i_reg++
+			}
+			c.pc_reg += 2	
+		case 0x33:
+			val := c.regs[op[0] & 0x0F]
+			hundreds := val / 100
+			tens := (val / 10) % 10
+			ones := val % 10
+
+			c.ram[c.i_reg] = hundreds
+			c.ram[c.i_reg + 1] = tens
+			c.ram[c.i_reg + 2] = ones
+			c.pc_reg += 2
+		case 0x07: // getuju timer do regu
+			reg := op[0] & 0xF
+			c.lock.Lock()
+			c.regs[reg] = c.delay_timer
+			c.lock.Unlock()
+			c.pc_reg += 2
+		case 0x15:
+			reg := op[0] & 0xF
+			c.lock.Lock()
+			c.delay_timer = c.regs[reg]
+			c.lock.Unlock()
+			c.pc_reg += 2
+		case 0x18:
+			reg := op[0] & 0xF
+			c.lock.Lock()
+			c.sound_timer = c.regs[reg]
+			c.lock.Unlock()
+			c.pc_reg += 2
+		} 
 	default:
 		if whole_op == 0x00ee {  // return from subroutine call 
 			if c.sp_reg == 0 {
@@ -253,7 +317,10 @@ func (c *CPU) exec() {
 }
 
 func main() {
-	fmt.Println("hello world")
+	cpu := newCPU()
+	go cpu.start_ticking()
+
+	select {}
 }
 
 
@@ -291,14 +358,14 @@ func main() {
 // 1 00E0 	cls 	Clear the screen
 
 // FIFTH TO-DO
-// fr55 	str v0-vr 	store registers v0-vr at location I onwards 	I is incremented to point to the next location on. e.g. I = I + r + 1
-// fr65 	ldr v0-vr 	load registers v0-vr from location I onwards 	as above. 
-// fr33 	bcd vr 	store the bcd representation of register vr at location I,I+1,I+2 	Doesn't change I   (note pro me, je to decimal reprezentace hodnoty v regu)
+// 1 fr55 	str v0-vr 	store registers v0-vr at location I onwards 	I is incremented to point to the next location on. e.g. I = I + r + 1
+// 1 fr65 	ldr v0-vr 	load registers v0-vr from location I onwards 	as above. 
+// 1 fr33 	bcd vr 	store the bcd representation of register vr at location I,I+1,I+2 	Doesn't change I   (note pro me, je to decimal reprezentace hodnoty v regu)
 
 // SIXTH TO-DO
-// fr07 	gdelay vr 	get delay timer into vr 	
-// fr15 	sdelay vr 	set the delay timer to vr 	
-// fr18 	ssound vr 	set the sound timer to vr 
+// 1 fr07 	gdelay vr 	get delay timer into vr 	
+// 1 fr15 	sdelay vr 	set the delay timer to vr 	
+// 1 fr18 	ssound vr 	set the sound timer to vr 
 
 // SEVENTH TO-DO
 // ek9e 	skpr k 	skip if key (register rk) pressed 	The key is a key number, see the chip-8 documentation
