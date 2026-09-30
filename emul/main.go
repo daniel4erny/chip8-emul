@@ -5,7 +5,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"sync"
-	"syscall/js"
+	// "syscall/js"
 	"time"
 )
 
