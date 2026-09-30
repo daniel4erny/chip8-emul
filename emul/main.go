@@ -1,11 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math/rand/v2"
 	"sync"
-	"time"
 	"syscall/js"
+	"time"
 )
 
 type CPU struct {
@@ -16,6 +17,7 @@ type CPU struct {
 	sp_reg uint8
 	stack [16]uint16
 	screen [64 * 32]byte //I will hate myself for this, note: I did
+	key_reg byte
 	
 	delay_timer byte
 	sound_timer byte
@@ -27,6 +29,7 @@ type CPU struct {
 func (c *CPU) start_ticking() {
 	ticker := time.NewTicker(time.Second / 60)
 	defer ticker.Stop()
+	should_sound := false
 
 	for range ticker.C {
 		c.lock.Lock()
@@ -34,9 +37,15 @@ func (c *CPU) start_ticking() {
 			c.delay_timer--
 		}
 		if c.sound_timer > 0 {
+			should_sound = true
 			c.sound_timer--
 		}
 		c.lock.Unlock()
+		if should_sound && c.sound_timer == 0 {
+			should_sound = false
+			fmt.Println("SOUND")
+			// makeSound() // this will call into js somehow
+		}
 	}
 }
 
@@ -110,6 +119,19 @@ func byte_to_bool(b byte) bool {
 		return false
 	} else {
 		return true
+	}
+}
+
+func getKey(key_c chan byte) {
+	// This just emulates how it would somehow work with js
+	ticker := time.NewTicker(time.Second / 20)
+	defer ticker.Stop()
+	keys := []byte{0x0, 0x1, 0x2, 0x3}
+	pt := 0
+
+	for range ticker.C {
+		key_c <- keys[pt]
+		pt = (pt + 1) % 3
 	}
 }
 
