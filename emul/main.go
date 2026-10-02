@@ -96,20 +96,32 @@ func newCPU() *CPU {
 }
 
 func (c *CPU) mountLoadRom() {
-      js.Global().Set("loadRom", js.FuncOf(func(this js.Value, args []js.Value) any {
-        data := args[0]
-        if data.Get("length").Int() > len(c.ram)-0x200 {
-            return false
-        }
+	js.Global().Set("loadRom", js.FuncOf(func(this js.Value, args []js.Value) any {
+		data := args[0]
+		if data.Get("length").Int() > len(c.ram)-0x200 {
+			return false
+		}
 
-              c.lock.Lock()
-              js.CopyBytesToGo(c.ram[0x200:], data)
-              c.pc_reg = 0x200
-              c.can_start = true
-              c.halted = false
-              c.lock.Unlock()
-              return true
-      }))
+		c.lock.Lock()
+		// reset everything from the previous rom, fonts stay at 0x000
+		for i := 0x200; i < len(c.ram); i++ {
+			c.ram[i] = 0
+		}
+		js.CopyBytesToGo(c.ram[0x200:], data)
+		c.regs = [16]byte{}
+		c.stack = [16]uint16{}
+		c.screen = [64 * 32]byte{}
+		c.keys = [16]bool{}
+		c.i_reg = 0
+		c.sp_reg = 0
+		c.pc_reg = 0x200
+		c.delay_timer = 0
+		c.sound_timer = 0
+		c.can_start = true
+		c.halted = false
+		c.lock.Unlock()
+		return true
+	}))
 }
 
 func (c *CPU) set_i(val uint16) {

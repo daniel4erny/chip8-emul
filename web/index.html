@@ -1,12 +1,40 @@
-<html>
+<!DOCTYPE html>
+<html lang="cs">
     <head>
         <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>CHIP-8</title>
         <script src="wasm_exec.js" defer></script>
         <script src="main.js" defer></script>
         <link rel="stylesheet" type="text/css" href="main.css">
     </head>
     <body>
-        <input type="file" id="rom" accept=".ch8">
+        <h1>CHIP-8</h1>
+
+        <section>
+            <label for="romSelect">Hra:</label>
+            <select id="romSelect">
+                <option value="">-- vyber ROM --</option>
+            </select>
+
+            <label for="rom">nebo vlastní soubor:</label>
+            <input type="file" id="rom" accept=".ch8">
+        </section>
+
+        <p id="status">Načítám emulátor…</p>
+
         <canvas id="ch8Display" width="64" height="32"></canvas>
+
+        <section>
+            <h2>Ovládání</h2>
+            <p>Klávesy vlevo na klávesnici odpovídají klávesnici CHIP-8 (v závorce):</p>
+            <table>
+                <tr><td>1 (1)</td><td>2 (2)</td><td>3 (3)</td><td>4 (C)</td></tr>
+                <tr><td>Q (4)</td><td>W (5)</td><td>E (6)</td><td>R (D)</td></tr>
+                <tr><td>A (7)</td><td>S (8)</td><td>D (9)</td><td>F (E)</td></tr>
+                <tr><td>Y/Z (A)</td><td>X (0)</td><td>C (B)</td><td>V (F)</td></tr>
+            </table>
+            <p>Každá hra používá jiné klávesy, nejčastěji 2/Q/E/S/W.</p>
+        </section>
     </body>
 </html>

@@ -1,6 +1,31 @@
+body {
+  font-family: sans-serif;
+  margin: 16px;
+  background: #fff;
+  color: #000;
+}
+
+section {
+  margin: 12px 0;
+}
+
 canvas {
-  width: 1024px; 
-  height: 512px;
-  image-rendering: pixelated; 
+  display: block;
+  width: 1024px;
+  max-width: 100%;
+  aspect-ratio: 2 / 1;
+  background: #000;
+  image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+td {
+  border: 1px solid #888;
+  padding: 4px 10px;
+  text-align: center;
+  font-family: monospace;
 }
