@@ -17,7 +17,7 @@ type CPU struct {
 	sp_reg uint8
 	stack [16]uint16
 	screen [64 * 32]byte //I will hate myself for this, note: I did
-	keys [16]bool // true = klavesa je zmacknuta
+	keys [16]bool //true = klavesa je zmacknuta
 	
 	delay_timer byte
 	sound_timer byte
@@ -134,7 +134,7 @@ func byte_to_bool(b byte) bool {
 }
 
 func (c *CPU) getKeyLoop() {
-	// JS vola setKey(klavesa, zmacknuto) na keydown/keyup
+	// JS call ts
 	js.Global().Set("setKey", js.FuncOf(func(this js.Value, args []js.Value) any {
 		key := args[0].Int() & 0x0F
 		c.keys[key] = args[1].Bool()
@@ -367,7 +367,7 @@ func main() {
 	cpu := newCPU()
 	go cpu.start_ticking()
 
-	cpu.getKeyLoop()
+	cpu.getKeyLoop() //mounts js func for key down and key up
 
 	select {}
 }
