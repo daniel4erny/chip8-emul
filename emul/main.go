@@ -26,6 +26,7 @@ type CPU struct {
 	shift_quirk bool
 	startBeep js.Value
 	stopBeep js.Value
+	can_start bool
 }
 
 func (c *CPU) start_ticking() {
@@ -84,19 +85,21 @@ func newCPU() *CPU {
 		ram: ram,
 		startBeep: start,
 		stopBeep: stop,
+		can_start: false,
 	}
 }
 
 func (c *CPU) mountLoadRom() {
       js.Global().Set("loadRom", js.FuncOf(func(this js.Value, args []js.Value) any {
-              data := args[0]
-              if data.Get("length").Int() > len(c.ram)-0x200 {
-                      return false
-              }
+        data := args[0]
+        if data.Get("length").Int() > len(c.ram)-0x200 {
+            return false
+        }
 
               c.lock.Lock()
               js.CopyBytesToGo(c.ram[0x200:], data)
               c.pc_reg = 0x200
+              c.can_start = true
               c.lock.Unlock()
               return true
       }))
@@ -385,8 +388,16 @@ func main() {
 	cpu.getKeyLoop() //mounts js func for key down and key up
 	cpu.mountLoadRom() //mounts js func for loading roms into ram (0x200)
 
-	for {
-		cpu.exec()
+	ticker := time.NewTicker(time.Second / 60) 
+
+	for range ticker.C {
+		if !cpu.can_start {
+			continue
+		} else {
+			for i := 0; i < 10;  i++ {
+				cpu.exec()
+			}
+		}
 	}
 
 	select {}
