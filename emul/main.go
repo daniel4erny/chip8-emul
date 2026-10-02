@@ -37,14 +37,19 @@ func (c *CPU) start_ticking() {
 			c.delay_timer--
 		}
 		if c.sound_timer > 0 {
-			should_sound = true
 			c.sound_timer--
 		}
+		sound_on := c.sound_timer > 0
 		c.lock.Unlock()
-		if should_sound && c.sound_timer == 0 {
+
+		if sound_on && !should_sound {
+			should_sound = true
+			fmt.Println("SOUND START")
+			// startBeep() // js
+		} else if !sound_on && should_sound {
 			should_sound = false
-			fmt.Println("SOUND")
-			// makeSound() // this will call into js somehow
+			fmt.Println("SOUND STOP")
+			// stopBeep() // js
 		}
 	}
 }
@@ -419,3 +424,8 @@ func main() {
 // 1 ek9e 	skpr k 	skip if key (register rk) pressed 	The key is a key number, see the chip-8 documentation
 // 1 eka1 	skup k 	skip if key (register rk) not pressed 	
 // 1 fr0a 	key vr 	wait for for keypress,put key in register vr 	
+
+//JS NEEDED 
+// fr18 	ssound vr 	set the sound timer to vr 
+// fr0a 	key vr 	wait for for keypress,put key in register vr 	
+
