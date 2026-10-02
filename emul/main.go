@@ -26,7 +26,10 @@ type CPU struct {
 	shift_quirk bool
 	startBeep js.Value
 	stopBeep js.Value
+	drawCanvas js.Value
+	jsScreen js.Value
 	can_start bool
+	halted bool
 }
 
 func (c *CPU) start_ticking() {
@@ -80,11 +83,14 @@ func newCPU() *CPU {
 	copy(ram[0:], fonts)
 	start := js.Global().Get("startBeep")
 	stop := js.Global().Get("stopBeep")
+	drawCanvas := js.Global().Get("drawScreen")
 	return &CPU{
 		pc_reg: 0x200,
 		ram: ram,
 		startBeep: start,
 		stopBeep: stop,
+		drawCanvas: drawCanvas,
+		jsScreen: js.Global().Get("Uint8Array").New(64 * 32),
 		can_start: false,
 	}
 }
@@ -100,6 +106,7 @@ func (c *CPU) mountLoadRom() {
               js.CopyBytesToGo(c.ram[0x200:], data)
               c.pc_reg = 0x200
               c.can_start = true
+              c.halted = false
               c.lock.Unlock()
               return true
       }))
@@ -168,33 +175,40 @@ func (c *CPU) exec() {
 
 	switch first_hex {
 	case 0x1: // jmp to last 12 bits
-		high_addr := op[0] << 4
-		low_addr := op[1]
-		addr := (uint16(high_addr) << 8) | uint16(low_addr)
-		c.pc_reg = addr
+		c.pc_reg = whole_op & 0x0FFF
 	case 0x2:
-		high_addr := op[0] << 4
-		low_addr := op[1]
-		addr := (uint16(high_addr) << 8) | uint16(low_addr)
-		if c.sp_reg >= 15 {
-			log.Fatal("SUBROUTINES EXCEEDED MAXIMUM DEPTH (16)")
+		if c.sp_reg >= 16 {
+			log.Println("SUBROUTINES EXCEEDED MAXIMUM DEPTH (16)")
+			c.halted = true
+			return
 		} 
-		c.stack[c.sp_reg] = addr
+		c.stack[c.sp_reg] = c.pc_reg + 2 // return address = next instruction
 		c.sp_reg++
+		c.pc_reg = whole_op & 0x0FFF
 	case 0x3:
 		reg := int(op[0] & 0x0F)
 		val := op[1]
 		if c.regs[reg] == val {
 			c.pc_reg += 4
-		} 
-		c.pc_reg += 4
+		} else {
+			c.pc_reg += 2
+		}
 	case 0x4:
 		reg := int(op[0] & 0x0F)
 		val := op[1]
-		if c.regs[reg] < val || c.regs[reg] > val {
+		if c.regs[reg] != val {
 			c.pc_reg += 4
-		} 
-		c.pc_reg += 4
+		} else {
+			c.pc_reg += 2
+		}
+	case 0x5: // skip if reg_x == reg_y
+		reg_y := op[1] >> 4
+		reg_x := op[0] & 0x0F
+		if c.regs[reg_x] == c.regs[reg_y] {
+			c.pc_reg += 4
+		} else {
+			c.pc_reg += 2
+		}
 	case 0x6: // mov reg, const
 		reg := int(op[0] & 0x0F)
 		val := op[1]
@@ -249,9 +263,9 @@ func (c *CPU) exec() {
 			    c.regs[vf] = c.regs[reg_x] & 1
 			    c.regs[reg_x] = c.regs[reg_x] >> 1
 			}					
-			c.pc_reg += 1
+			c.pc_reg += 2
 		case 0x7:
-			if c.regs[reg_x] >= c.regs[reg_y] {
+			if c.regs[reg_y] >= c.regs[reg_x] {
 				c.regs[vf] = 1
 			} else {
 				c.regs[vf] = 0
@@ -272,23 +286,16 @@ func (c *CPU) exec() {
 	case 0x9: // another skip func
 		reg_y := op[1] >> 4
 		reg_x := op[0] & 0x0F
-		if c.regs[reg_y] > c.regs[reg_x] || c.regs[reg_y] < c.regs[reg_x] {
+		if c.regs[reg_x] != c.regs[reg_y] {
+			c.pc_reg += 4
+		} else {
 			c.pc_reg += 2
-		} 
-		c.pc_reg += 2
+		}
 	case 0xa:
-		high_val := op[0] << 4
-		low_val := op[1]
-		val := (uint16(high_val) << 8) | uint16(low_val)
-		c.set_i(val)
+		c.set_i(whole_op & 0x0FFF)
 		c.pc_reg += 2
-	case 0xb:
-		high_val := op[0] << 4
-		low_val := op[1]
-		val := (uint16(high_val) << 8) | uint16(low_val)
-		val += uint16(c.regs[0])
-		c.set_i(val)
-		c.pc_reg += 2
+	case 0xb: // jmp to xxx + v0
+		c.pc_reg = ((whole_op & 0x0FFF) + uint16(c.regs[0])) % 4096
 	case 0xc: //the number is actually pseudorandom (hate chip-8)
 		reg := op[0] & 0x0F
 		val := op[1]
@@ -312,6 +319,10 @@ func (c *CPU) exec() {
 		case 0x29: // put the pointer to char in ram to vi
 			reg := op[0] & 0x0F
 			c.i_reg = uint16(c.regs[reg]) * 5 // one char is 5 byte, therefore we multiply the value by five
+			c.pc_reg += 2
+		case 0x1e: // add vr to I
+			reg := op[0] & 0x0F
+			c.set_i(c.i_reg + uint16(c.regs[reg]))
 			c.pc_reg += 2
 		case 0x55:
 			max_reg := int(op[0] & 0x0F)
@@ -368,7 +379,9 @@ func (c *CPU) exec() {
 	default:
 		if whole_op == 0x00ee {  // return from subroutine call 
 			if c.sp_reg == 0 {
-				log.Fatal("SUBROUTINES EXCEEDED MINIMUM DEPTH (0)")
+				log.Println("SUBROUTINES EXCEEDED MINIMUM DEPTH (0)")
+				c.halted = true
+				return
 			} 
 			c.pc_reg = c.stack[c.sp_reg -1]
 			c.sp_reg--
@@ -391,13 +404,15 @@ func main() {
 	ticker := time.NewTicker(time.Second / 60) 
 
 	for range ticker.C {
-		if !cpu.can_start {
+		if !cpu.can_start || cpu.halted {
 			continue
 		} else {
 			for i := 0; i < 10;  i++ {
 				cpu.exec()
 			}
 		}
+		js.CopyBytesToJS(cpu.jsScreen, cpu.screen[:])
+		cpu.drawCanvas.Invoke(cpu.jsScreen)
 	}
 
 	select {}

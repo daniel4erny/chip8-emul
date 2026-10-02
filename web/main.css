@@ -1,6 +1,6 @@
 canvas {
-  width: 512px; 
-  height: 256px;
+  width: 1024px; 
+  height: 512px;
   image-rendering: pixelated; 
   image-rendering: crisp-edges;
 }
