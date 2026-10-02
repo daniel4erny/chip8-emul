@@ -122,7 +122,7 @@ func byte_to_bool(b byte) bool {
 	}
 }
 
-func getKey(key_c chan byte) {
+func (c *CPU) getKeyLoop(key_chan chan byte) {
 	// This just emulates how it would somehow work with js
 	ticker := time.NewTicker(time.Second / 20)
 	defer ticker.Stop()
@@ -130,12 +130,17 @@ func getKey(key_c chan byte) {
 	pt := 0
 
 	for range ticker.C {
-		key_c <- keys[pt]
+		select {
+		case <- key_chan:
+		default:
+		}
+		c.key_reg = keys[pt]
+		key_chan <- c.key_reg
 		pt = (pt + 1) % 3
 	}
 }
 
-func (c *CPU) exec() {
+func (c *CPU) exec(key_chan chan byte) {
 	op := [2]byte{c.ram[c.pc_reg], c.ram[c.pc_reg+1]}
 	whole_op := uint16(op[0])<<8 | uint16(op[1])
 	first_hex := op[0] >> 4
@@ -273,6 +278,20 @@ func (c *CPU) exec() {
 	case 0xd:
 		c.draw(op) // gotta do seperate function for ts
 		c.pc_reg += 2
+	case 0xe:
+		if op[1] == 0x9e {
+			key := op[0] & 0x0F
+			if c.key_reg == key {
+				c.pc_reg += 2
+			}
+			c.pc_reg += 2
+		} else if op[1] == 0xa1 {
+			key := op[0] & 0x0F
+			if c.key_reg != key {
+				c.pc_reg += 2
+			}
+			c.pc_reg += 2
+		}
 	case 0xf:
 		switch op[1] {
 		case 0x29: // put the pointer to char in ram to vi
@@ -321,6 +340,10 @@ func (c *CPU) exec() {
 			c.sound_timer = c.regs[reg]
 			c.lock.Unlock()
 			c.pc_reg += 2
+		case 0x0a:
+			reg := op[0] & 0xF
+			c.regs[reg] <- key_chan
+			c.pc_reg += 2
 		} 
 	default:
 		if whole_op == 0x00ee {  // return from subroutine call 
@@ -341,6 +364,9 @@ func (c *CPU) exec() {
 func main() {
 	cpu := newCPU()
 	go cpu.start_ticking()
+
+	key_chan = make(chan byte, 1)
+	go 
 
 	select {}
 }
@@ -373,7 +399,7 @@ func main() {
 // 1 bxxx 	jmi xxx 	Jump to address xxx+register v0 	
 // 1 crxx 	rand vr,xxx    	vr = random number less than or equal to xxx 	
 
-// FOURTH-TODO
+// FOURTH-TO-DO
 // 1 fr29 	font vr 	point I to the sprite for hexadecimal character in vr 	Sprite is 5 bytes high
 // 1 fr1e 	adi vr 	add register vr to the index register
 // 1 drys 	sprite rx,ry,s 	Draw sprite at screen location rx,ry height s 	Sprites stored in memory at location in index register, maximum 8 bits wide. Wraps around the screen. If when drawn, clears a pixel, vf is set to 1 otherwise it is zero. All drawing is xor drawing (e.g. it toggles the screen pixels
@@ -390,6 +416,6 @@ func main() {
 // 1 fr18 	ssound vr 	set the sound timer to vr 
 
 // SEVENTH TO-DO
-// ek9e 	skpr k 	skip if key (register rk) pressed 	The key is a key number, see the chip-8 documentation
-// eka1 	skup k 	skip if key (register rk) not pressed 	
-// fr0a 	key vr 	wait for for keypress,put key in register vr 	
+// 1 ek9e 	skpr k 	skip if key (register rk) pressed 	The key is a key number, see the chip-8 documentation
+// 1 eka1 	skup k 	skip if key (register rk) not pressed 	
+// 1 fr0a 	key vr 	wait for for keypress,put key in register vr 	
