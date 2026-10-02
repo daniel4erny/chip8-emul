@@ -342,7 +342,7 @@ func (c *CPU) exec(key_chan chan byte) {
 			c.pc_reg += 2
 		case 0x0a:
 			reg := op[0] & 0xF
-			c.regs[reg] <- key_chan
+			c.regs[reg] = <- key_chan
 			c.pc_reg += 2
 		} 
 	default:
@@ -365,8 +365,8 @@ func main() {
 	cpu := newCPU()
 	go cpu.start_ticking()
 
-	key_chan = make(chan byte, 1)
-	go 
+	key_chan := make(chan byte, 1)
+	go cpu.getKeyLoop(key_chan)
 
 	select {}
 }
