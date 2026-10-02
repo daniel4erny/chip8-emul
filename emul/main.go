@@ -5,7 +5,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"sync"
-	// "syscall/js"
+	"syscall/js"
 	"time"
 )
 
@@ -17,13 +17,15 @@ type CPU struct {
 	sp_reg uint8
 	stack [16]uint16
 	screen [64 * 32]byte //I will hate myself for this, note: I did
-	key_reg byte
+	keys [16]bool // true = klavesa je zmacknuta
 	
 	delay_timer byte
 	sound_timer byte
 	lock sync.Mutex
 
 	shift_quirk bool
+	startBeep js.Value
+	stopBeep js.Value
 }
 
 func (c *CPU) start_ticking() {
@@ -45,11 +47,11 @@ func (c *CPU) start_ticking() {
 		if sound_on && !should_sound {
 			should_sound = true
 			fmt.Println("SOUND START")
-			// startBeep() // js
+			c.startBeep.Invoke() // js
 		} else if !sound_on && should_sound {
 			should_sound = false
 			fmt.Println("SOUND STOP")
-			// stopBeep() // js
+			c.stopBeep.Invoke() // js
 		}
 	}
 }
@@ -75,9 +77,13 @@ func newCPU() *CPU {
 	}
 	var ram [4096]byte
 	copy(ram[0:], fonts)
+	start := js.Global().Get("startBeep")
+	stop := js.Global().Get("stopBeep")
 	return &CPU{
 		pc_reg: 0x200,
 		ram: ram,
+		startBeep: start,
+		stopBeep: stop,
 	}
 }
 
@@ -127,25 +133,16 @@ func byte_to_bool(b byte) bool {
 	}
 }
 
-func (c *CPU) getKeyLoop(key_chan chan byte) {
-	// This just emulates how it would somehow work with js
-	ticker := time.NewTicker(time.Second / 20)
-	defer ticker.Stop()
-	keys := []byte{0x0, 0x1, 0x2, 0x3}
-	pt := 0
-
-	for range ticker.C {
-		select {
-		case <- key_chan:
-		default:
-		}
-		c.key_reg = keys[pt]
-		key_chan <- c.key_reg
-		pt = (pt + 1) % 3
-	}
+func (c *CPU) getKeyLoop() {
+	// JS vola setKey(klavesa, zmacknuto) na keydown/keyup
+	js.Global().Set("setKey", js.FuncOf(func(this js.Value, args []js.Value) any {
+		key := args[0].Int() & 0x0F
+		c.keys[key] = args[1].Bool()
+		return nil
+	}))
 }
 
-func (c *CPU) exec(key_chan chan byte) {
+func (c *CPU) exec() {
 	op := [2]byte{c.ram[c.pc_reg], c.ram[c.pc_reg+1]}
 	whole_op := uint16(op[0])<<8 | uint16(op[1])
 	first_hex := op[0] >> 4
@@ -284,19 +281,14 @@ func (c *CPU) exec(key_chan chan byte) {
 		c.draw(op) // gotta do seperate function for ts
 		c.pc_reg += 2
 	case 0xe:
-		if op[1] == 0x9e {
-			key := op[0] & 0x0F
-			if c.key_reg == key {
-				c.pc_reg += 2
-			}
+		key := c.regs[op[0] & 0x0F] & 0x0F // cislo klavesy je v registru
+		pressed := c.keys[key]
+		if op[1] == 0x9e && pressed {
 			c.pc_reg += 2
-		} else if op[1] == 0xa1 {
-			key := op[0] & 0x0F
-			if c.key_reg != key {
-				c.pc_reg += 2
-			}
+		} else if op[1] == 0xa1 && !pressed {
 			c.pc_reg += 2
 		}
+		c.pc_reg += 2
 	case 0xf:
 		switch op[1] {
 		case 0x29: // put the pointer to char in ram to vi
@@ -347,8 +339,13 @@ func (c *CPU) exec(key_chan chan byte) {
 			c.pc_reg += 2
 		case 0x0a:
 			reg := op[0] & 0xF
-			c.regs[reg] = <- key_chan
-			c.pc_reg += 2
+			for key, down := range c.keys {
+				if down {
+					c.regs[reg] = byte(key)
+					c.pc_reg += 2
+					break
+				}
+			}
 		} 
 	default:
 		if whole_op == 0x00ee {  // return from subroutine call 
@@ -370,8 +367,7 @@ func main() {
 	cpu := newCPU()
 	go cpu.start_ticking()
 
-	key_chan := make(chan byte, 1)
-	go cpu.getKeyLoop(key_chan)
+	cpu.getKeyLoop()
 
 	select {}
 }
@@ -426,6 +422,6 @@ func main() {
 // 1 fr0a 	key vr 	wait for for keypress,put key in register vr 	
 
 //JS NEEDED 
-// fr18 	ssound vr 	set the sound timer to vr 
-// fr0a 	key vr 	wait for for keypress,put key in register vr 	
+// 1 fr18 	ssound vr 	set the sound timer to vr 
+// 1 fr0a 	key vr 	wait for for keypress,put key in register vr 	
 
