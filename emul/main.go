@@ -87,6 +87,21 @@ func newCPU() *CPU {
 	}
 }
 
+func (c *CPU) mountLoadRom() {
+      js.Global().Set("loadRom", js.FuncOf(func(this js.Value, args []js.Value) any {
+              data := args[0]
+              if data.Get("length").Int() > len(c.ram)-0x200 {
+                      return false
+              }
+
+              c.lock.Lock()
+              js.CopyBytesToGo(c.ram[0x200:], data)
+              c.pc_reg = 0x200
+              c.lock.Unlock()
+              return true
+      }))
+}
+
 func (c *CPU) set_i(val uint16) {
 	c.i_reg = val % 4096
 }
@@ -368,6 +383,11 @@ func main() {
 	go cpu.start_ticking()
 
 	cpu.getKeyLoop() //mounts js func for key down and key up
+	cpu.mountLoadRom() //mounts js func for loading roms into ram (0x200)
+
+	for {
+		cpu.exec()
+	}
 
 	select {}
 }
