@@ -50,7 +50,6 @@ const romFile = document.getElementById("rom");
 const go = new Go();
 const wasmReady = WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
     go.run(result.instance);
-    statusText.textContent = "Emulátor připraven, vyber hru.";
 });
 
 async function startRom(buf, name) {
